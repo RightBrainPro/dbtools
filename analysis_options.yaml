@@ -1,0 +1,18 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  exclude: [build/**]
+  language:
+    strict-casts: false
+
+linter:
+  rules:
+    avoid_print: true
+    avoid_field_initializers_in_const_classes: true
+    prefer_relative_imports: true
+    prefer_single_quotes: true
+    prefer_const_constructors: true
+    prefer_const_constructors_in_immutables: true
+    prefer_const_declarations: true
+    prefer_const_literals_to_create_immutables: true
+    unnecessary_breaks: true
