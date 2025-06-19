@@ -13,9 +13,9 @@ final createCommand = CreateCommand();
 class CreateCommand extends Command<int> with ConfigMixin, StdoutMixin
 {
   @override
-  String get description => 'Create a new database.\n\n'
-    'Creates the database specified in the selected ${italic('env')} of the '
-    'config in the ${bold('dbName')} parameter.'
+  String get description => 'Create a new database.\n'
+    '${dim('Creates the database specified in the selected ${italic('env')} '
+    'of the config in the ${bold('dbName')} parameter.')} '
   ;
 
   @override

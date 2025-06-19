@@ -37,6 +37,12 @@ class MigrationExecutor with MigrationMixin
     delegate: delegate,
   ));
 
+  Future<void> clean({
+    final CleaningDelegate? delegate,
+  }) => _execute((connection) => _clean(connection,
+    delegate: delegate,
+  ));
+
   Future<void> fixMigration(final String identity, {
     final FixingDelegate? delegate,
   }) => _execute((connection) => _fixMigration(connection,
@@ -285,11 +291,11 @@ class MigrationExecutor with MigrationMixin
             await connection.execute(script);
             delegate?.onCleanupSucceeded();
           } on PostgresqlException catch (e) {
-            error = e;
             delegate?.onCleanupFailed(e.info);
-          } catch (e) {
             error = e;
+          } catch (e) {
             delegate?.onCleanupFailed('$e');
+            error = e;
           }
         }
       }
@@ -307,12 +313,12 @@ class MigrationExecutor with MigrationMixin
           });
           ++migrationsApplied;
         } on PostgresqlException catch (e) {
-          error = e;
           delegate?.onMigrationCommitFailed(localMigration.id, e.info);
+          error = e;
           break;
         } catch (e) {
-          error = e;
           delegate?.onMigrationCommitFailed(localMigration.id, '$e');
+          error = e;
           break;
         }
       }
@@ -326,16 +332,109 @@ class MigrationExecutor with MigrationMixin
             await connection.execute(script);
           }
         } on PostgresqlException catch (e) {
-          error = e;
           delegate?.onAfterCommittingFailed(e.info);
-        } catch (e) {
           error = e;
+        } catch (e) {
           delegate?.onAfterCommittingFailed('$e');
+          error = e;
         }
       }
     }
 
     if (error != null) throw AbortedException('$error');
+  }
+
+  Future<void> _clean(final Connection connection, {
+    final CleaningDelegate? delegate,
+  }) async
+  {
+    await _prepare(connection, delegate: delegate);
+
+    delegate?.onScanningStarted();
+    final List<BriefMigration> dbMigrations;
+    try {
+      // Query all db migrations, sorted by id.
+      dbMigrations = [];
+      final sql = 'select id, name, csum from ${env.tableName} order by id';
+      final rows = connection.query(sql);
+      await for (final row in rows) {
+        final jsonValue = row.toMap();
+        dbMigrations.add(BriefMigration(
+          id: jsonValue['id'],
+          name: jsonValue['name'],
+          csum: jsonValue['csum'],
+          path: '',
+        ));
+      }
+    } on FormatException catch (e) {
+      delegate?.onScanningError(e.message);
+      throw AbortedException(e.message);
+    } on FileSystemException catch (e) {
+      delegate?.onScanningError('${e.message}, path ${e.path}');
+      throw AbortedException('${e.message}, path ${e.path}');
+    } catch (e) {
+      delegate?.onScanningError('$e');
+      throw AbortedException('$e');
+    }
+    delegate?.onScanningSucceeded();
+
+    final migrationsToRollback = dbMigrations.length;
+
+    delegate?.onRollbackStarted(migrationsToRollback);
+    if (migrationsToRollback > 0) {
+      if (!allowRollback) {
+        delegate?.onRollbackForbidden(migrationsToRollback);
+        throw Exception('Aborted');
+      }
+      final List<RollbackMigration> rollbacks;
+      try {
+        final sql = 'select id, rollback from ${env.tableName}'
+          ' order by id desc';
+        final rows = await connection.query(sql).toList();
+        rollbacks = rows
+          .map((row) => RollbackMigration(id: row[0], rollback: row[1]))
+          .toList();
+      } on PostgresqlException catch (e) {
+        delegate?.onRollbackFailed(e.info);
+        throw AbortedException(e.info);
+      } catch (e) {
+        delegate?.onRollbackFailed('$e');
+        throw AbortedException('$e');
+      }
+      for (final migration in rollbacks) {
+        try {
+          await connection.runInTransaction(() async {
+            await connection.execute(migration.rollback);
+            final sql = 'delete from ${env.tableName} where id = @id';
+            await connection.execute(sql, { 'id': migration.id });
+          });
+        } on PostgresqlException catch (e) {
+          delegate?.onMigrationRollbackFailed(migration.id, e.info);
+          throw AbortedException(e.info);
+        } catch (e) {
+          delegate?.onMigrationRollbackFailed(migration.id, '$e');
+          throw AbortedException('$e');
+        }
+      }
+    }
+    delegate?.onRollbackSucceeded(migrationsToRollback);
+
+    final script = await getScript(
+      config.migrationsPath, 'cleanup.sql'
+    );
+    if (script.isNotEmpty) {
+      delegate?.onCleanupStarted();
+      try {
+        await connection.execute(script);
+        delegate?.onCleanupSucceeded();
+      } on PostgresqlException catch (e) {
+        delegate?.onCleanupFailed(e.info);
+        throw AbortedException('$e');
+      } catch (e) {
+        delegate?.onCleanupFailed('$e');
+        throw AbortedException('$e');
+      }
+    }
   }
 
   Future<void> _fixMigration(final Connection connection, {
@@ -415,7 +514,7 @@ abstract interface class PreparingDelegate
 }
 
 
-abstract interface class MigrationDelegate implements PreparingDelegate
+abstract interface class ScanningDelegate
 {
   /// Occurs when the migration scanning process starts.
   void onScanningStarted();
@@ -425,20 +524,11 @@ abstract interface class MigrationDelegate implements PreparingDelegate
 
   /// Occurs when the migration scanning process succeeds.
   void onScanningSucceeded();
+}
 
-  /// Occurs when the target migration [identity] has bad format.
-  void onBadIdentity(final String identity);
 
-  /// Occurs when local migrations don't contain the target migration with the
-  /// specified [id].
-  void onIdentityNotFound(final int id);
-
-  /// Occurs when the migrations comparing process starts.
-  void onComparingStarted();
-
-  /// Occurs when the migrations comparing process succeeds.
-  void onComparingSucceeded();
-
+abstract interface class RollbackDelegate
+{
   /// Occurs when the rollback process starts with the specified [number] of
   /// migrations to be rolled back.
   void onRollbackStarted(final int number);
@@ -457,6 +547,39 @@ abstract interface class MigrationDelegate implements PreparingDelegate
   /// Occurs when the rollback process succeeds with the specified [number] of
   /// rolled back migrations.
   void onRollbackSucceeded(final int number);
+}
+
+
+abstract interface class CleaningUpDelegate
+{
+  /// Occurs when all migrations are rolled back in the database and there is no
+  /// any migration to be committed.
+  void onCleanupStarted();
+
+  /// Occurs when the cleanup process fails due to the specified [reason].
+  void onCleanupFailed(final String reason);
+
+  /// Occurs when the cleanup process succeeds.
+  void onCleanupSucceeded();
+}
+
+
+abstract interface class MigrationDelegate
+  implements PreparingDelegate, ScanningDelegate, RollbackDelegate,
+    CleaningUpDelegate
+{
+  /// Occurs when the target migration [identity] has bad format.
+  void onBadIdentity(final String identity);
+
+  /// Occurs when local migrations don't contain the target migration with the
+  /// specified [id].
+  void onIdentityNotFound(final int id);
+
+  /// Occurs when the migrations comparing process starts.
+  void onComparingStarted();
+
+  /// Occurs when the migrations comparing process succeeds.
+  void onComparingSucceeded();
 
   /// Occurs when the migration committing process starts to handle the
   /// specified [number] of migrations.
@@ -474,16 +597,13 @@ abstract interface class MigrationDelegate implements PreparingDelegate
   /// Occurs when `after_commits.sql` script fails due to the specified
   /// [reason].
   void onAfterCommittingFailed(final String reason);
+}
 
-  /// Occurs when all migrations are rolled back in the database and there is no
-  /// any migration to be committed.
-  void onCleanupStarted();
 
-  /// Occurs when the cleanup process fails due to the specified [reason].
-  void onCleanupFailed(final String reason);
-
-  /// Occurs when the cleanup process succeeds.
-  void onCleanupSucceeded();
+abstract interface class CleaningDelegate
+  implements PreparingDelegate, ScanningDelegate, RollbackDelegate,
+    CleaningUpDelegate
+{
 }
 
 

@@ -1,10 +1,11 @@
 import 'package:args/command_runner.dart';
 
 import 'ansi.dart';
-import 'commands/fix.dart';
-import 'commands/create.dart';
-import 'commands/drop.dart';
-import 'commands/migrate.dart';
+import 'commands/fix_command.dart';
+import 'commands/clean_command.dart';
+import 'commands/create_command.dart';
+import 'commands/drop_command.dart';
+import 'commands/migrate_command.dart';
 
 
 final mainRunner = MainCommandRunner()
@@ -33,6 +34,7 @@ final mainRunner = MainCommandRunner()
   ..addCommand(createCommand)
   ..addCommand(dropCommand)
   ..addCommand(migrateCommand)
+  ..addCommand(cleanCommand)
   ..addCommand(fixCommand)
 ;
 

@@ -13,9 +13,9 @@ final dropCommand = DropCommand();
 class DropCommand extends Command<int> with ConfigMixin, StdoutMixin
 {
   @override
-  String get description => 'Drop the database.\n\n'
-    'Drops the database specified in the selected ${italic('env')} of the '
-    'config in the ${bold('dbName')} parameter.'
+  String get description => 'Drop the database.\n'
+    '${dim('Drops the database specified in the selected ${italic('env')} of '
+    'the config in the ${bold('dbName')} parameter.')}'
   ;
 
   @override

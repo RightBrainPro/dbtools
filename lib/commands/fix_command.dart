@@ -1,5 +1,6 @@
 import 'package:args/command_runner.dart';
 
+import '../ansi.dart';
 import '../constants.dart';
 import 'arguments_mixin.dart';
 import 'config_mixin.dart';
@@ -20,9 +21,13 @@ class FixCommand extends Command<int>
   implements FixingDelegate
 {
   @override
-  String get description => 'Fix the specified migration in the database.\n\n'
-    'Updates the specified migration in the database with the local one, i.e. '
-    'rewrites the name, control summ and the rollback script.'
+  String get description => 'Fix the specified migration in the database.\n'
+    '${dim('Updates the specified migration in the database with the local '
+    'one, i.e. rewrites the name, control summ and the rollback script.\n'
+    'It is useful when the migration with a bug in the rollback code has been '
+    'commited, and now it can not be rolled back due to the bug. You can fix '
+    'the bug locally and use this command to push the fixed rollback.sql to '
+    'the database.')}'
   ;
 
   @override

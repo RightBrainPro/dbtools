@@ -1,0 +1,8 @@
+  migrationsPath: migrations
+  dev:
+    host: localhost
+    port: 5432
+    user: postgres
+    dbName: example
+    tableName: migrations
+    homeDbName: postgres

@@ -2,7 +2,7 @@ name: dbtools
 description: A simple CLI application for managing the database during developing.
 repository: https://github.com/RightBrainPro/dbtools
 issue_tracker: https://github.com/RightBrainPro/dbtools/issues
-version: 1.0.0
+version: 1.1.0
 
 executables:
   dbtools: main
