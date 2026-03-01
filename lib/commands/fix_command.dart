@@ -54,7 +54,7 @@ class FixCommand extends Command<int>
     final executor = MigrationExecutor(
       config: config,
       env: env,
-      passwordProvider: () => getPassword(env.user),
+      passwordProvider: () => getPassword(env),
     );
     try {
       await executor.fixMigration(migrationIdentity, delegate: this);

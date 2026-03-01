@@ -30,33 +30,33 @@ mixin ConfigMixin<T> on Command<T>
     return env;
   }
 
-  String getPassword(final String userName)
+  String getPassword(final EnvConfig env)
   {
     String? password;
     final askPassword = globalResults?.flag('password');
     if (askPassword == true) {
-      stdout.write('Password for the user $userName: ');
+      stdout.write('Password for the user ${env.user}: ');
       stdin.echoMode = false;
       while (password == null) {
         password = stdin.readLineSync();
       }
       stdin.echoMode = true;
     } else {
-      password = '';
+      password = env.password ?? '';
     }
     return password;
   }
 
   String getPostgresUrl(final EnvConfig env)
   {
-    final password = getPassword(env.user);
+    final password = getPassword(env);
     return 'postgres://${env.user}:$password@${env.host}:${env.port}/'
       '${env.dbName}';
   }
 
   String getPostgresHomeUrl(final EnvConfig env)
   {
-    final password = getPassword(env.user);
+    final password = getPassword(env);
     return 'postgres://${env.user}:$password@${env.host}:${env.port}/'
       '${env.homeDbName}';
   }

@@ -58,7 +58,7 @@ class MigrateCommand extends Command<int>
     final executor = MigrationExecutor(
       config: config,
       env: env,
-      passwordProvider: () => getPassword(env.user),
+      passwordProvider: () => getPassword(env),
       allowRollback: argResults?.flag('rollback') ?? true,
     );
     try {

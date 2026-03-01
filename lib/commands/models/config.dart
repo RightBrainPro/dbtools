@@ -53,6 +53,7 @@ class EnvConfig
   final String host;
   final int port;
   final String user;
+  final String? password;
   final String dbName;
   final String tableName;
   final String homeDbName;
@@ -61,6 +62,7 @@ class EnvConfig
     this.host = _host,
     this.port = _port,
     this.user = _user,
+    this.password,
     this.dbName = _dbName,
     this.tableName = _tableName,
     this.homeDbName = _user,
@@ -80,7 +82,11 @@ class EnvConfig
     if (jsonUser is! String) {
       throw const ConfigException('user is expected to be a valid string.');
     }
-    final jsonDbName = jsonValue['dbName'] ?? _dbName;
+    final jsonPassword = jsonValue['password'];
+    if (jsonPassword is! String?) {
+      throw const ConfigException('password is expected to be an optional string.');
+    }
+    final jsonDbName = jsonValue['dbName'] ?? jsonUser ?? _dbName;
     if (jsonDbName is! String) {
       throw const ConfigException('dbName is expected to be a valid string.');
     }
@@ -96,6 +102,7 @@ class EnvConfig
       host: jsonHost,
       port: jsonPort,
       user: jsonUser,
+      password: jsonPassword,
       dbName: jsonDbName,
       tableName: jsonTableName,
       homeDbName: jsonHomeDbName,

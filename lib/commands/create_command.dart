@@ -36,7 +36,7 @@ class CreateCommand extends Command<int> with ConfigMixin, StdoutMixin
     }
     final executor = DatabaseExecutor(
       env: env,
-      passwordProvider: () => getPassword(env.user),
+      passwordProvider: () => getPassword(env),
     );
     try {
       await executor.create();

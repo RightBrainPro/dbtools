@@ -24,10 +24,11 @@ dart pub global activate dbtools
 migrationsPath: migrations
 dev:
   user: postgres
+  password: postgres
   dbName: your_database
 prod:
   host: your.server.com
-  post: 5432
+  port: 5432
   user: admin
   dbName: your_database
   tableName: migrations
@@ -37,11 +38,12 @@ prod:
 * `host` is the address of your PostgreSQL installation. `localhost` by default.
 * `port` is the port your PostgreSQL is listening to. `5432` by default.
 * `user` is the PostgreSQL role with privileges for manipulating databases. `postgres` by default.
-* `dbName` is the target database of your project. It is required.
+* `password` is the user password. It is optional. You can not specify the password in the config and force dbtools to ask the password when executing like `dbtools migrate -W`.
+* `dbName` is the target database of your project. If not specified, the database will be selected by user name.
 * `tableName` is the name of the migrations table in the target database.
 * `homeDbName` is default database of the `user`. By default, has the same name as `user`.
 
-`dev` is the default environment, but you can choose any set of environments. The only requirement is at least one environment must be presented in the config.
+`dev` is the default environment, but you can choose any set of environments. The only requirement is at least one environment must be presented in the config. If you don't specify the environment like this `dbtools migrate -e prod`, `dev` will be choosen; if there is no `dev` environment in your config, the first one will be choosen.
 
 3. Write migrations.
 In the `migrationsPath` directory you write migration folders containing two scripts:

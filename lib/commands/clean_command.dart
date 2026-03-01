@@ -39,7 +39,7 @@ class CleanCommand extends Command<int>
     final executor = MigrationExecutor(
       config: config,
       env: env,
-      passwordProvider: () => getPassword(env.user),
+      passwordProvider: () => getPassword(env),
     );
     try {
       await executor.clean(delegate: this);
