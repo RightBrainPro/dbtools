@@ -1,3 +1,7 @@
+## 1.2.1
+
+- The bin file name was renamed to the default one.
+
 ## 1.2.0
 
 - Support user password in the env config.
