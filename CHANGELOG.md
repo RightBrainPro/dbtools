@@ -1,17 +1,21 @@
+## 1.3.0
+
+- Added support for passing passwords via pipe.
+
 ## 1.2.1
 
-- The bin file name was renamed to the default one.
+- Renamed binary to default name.
 
 ## 1.2.0
 
-- Support user password in the env config.
-- When `dbName` is not specified, the database will be selected by user name.
+- Added password support in environment config.
+- Default database now falls back to username when `dbName` is not specified.
 
 ## 1.1.0
 
-- Clean command.
-- A simple example has been added.
+- Added `clean` command.
+- Added simple example.
 
 ## 1.0.0
 
-- Initial version.
+- Initial release.

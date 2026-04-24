@@ -32,19 +32,19 @@ mixin ConfigMixin<T> on Command<T>
 
   String getPassword(final EnvConfig env)
   {
-    String? password;
-    final askPassword = globalResults?.flag('password');
-    if (askPassword == true) {
-      stdout.write('Password for the user ${env.user}: ');
-      stdin.echoMode = false;
-      while (password == null) {
-        password = stdin.readLineSync();
+    final askPassword = globalResults?.flag('password') ?? false;
+    if (askPassword) {
+      if (stdin.hasTerminal) {
+        stdout.write('Password for the user ${env.user}: ');
+        stdin.echoMode = false;
+        final password = stdin.readLineSync() ?? '';
+        stdin.echoMode = true;
+        stdout.writeln();
+        return password;
       }
-      stdin.echoMode = true;
-    } else {
-      password = env.password ?? '';
+      return stdin.readLineSync() ?? '';
     }
-    return password;
+    return env.password ?? '';
   }
 
   String getPostgresUrl(final EnvConfig env)

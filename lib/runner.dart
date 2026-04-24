@@ -24,11 +24,12 @@ final mainRunner = MainCommandRunner()
   )
   ..argParser.addFlag('password',
     abbr: 'W',
-    help: 'Whether to ask you the PostgreSQL user password. '
-      '${bold('Optional')}.\n'
+    help: 'Whether to ask the PostgreSQL user password. ${bold('Optional')}.\n'
       'It is ${bold('off')} by default, which means the user does not have any '
-      'password. If he does, please turn on this flag to be able to enter the '
-      'password.',
+      'password. If he does, please turn on this flag to be able to provide '
+      'the password. The password can be provided via pipe: ${dim('echo '
+      '\$PASSWORD | dart run dbtools --env=dev --password migrate')}. If pipe '
+      'is not used, you will be prompted to enter the password manually.',
     defaultsTo: false,
   )
   ..addCommand(createCommand)
