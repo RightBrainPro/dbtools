@@ -1,56 +1,38 @@
-import 'package:args/command_runner.dart';
+import 'package:meta/meta.dart';
 
 import '../ansi.dart';
-import '../constants.dart';
-import 'config_mixin.dart';
-import 'executors/database.dart';
-import 'stdout_mixin.dart';
+import 'actions/create_action.dart';
+import 'base_command.dart';
+import 'command_context.dart';
+import 'console.dart';
 
 
-final createCommand = CreateCommand();
-
-
-class CreateCommand extends Command<int> with ConfigMixin, StdoutMixin
+final class CreateCommand extends BaseCommand
 {
+  @override
+  String get category => 'Database';
+
+  @override
+  String get name => 'create';
+
   @override
   String get description => 'Create a new database.\n'
     '${dim('Creates the database specified in the selected ${italic('env')} '
     'of the config in the ${bold('dbName')} parameter.')} '
   ;
 
-  @override
-  String get name => 'create';
+  CreateCommand(super.commandContextFactory);
 
   @override
-  String get category => 'Database';
-
-  @override
-  Future<int> run() async
+  @protected
+  Future<int> execute(final CommandContext context) async
   {
-    final env = await loadEnv();
-    if (env == null) {
-      errorLn(
-        'Failed to find the env.\nPlease, specify a valid env in your config.'
-      );
-      return resultError;
-    }
-    final executor = DatabaseExecutor(
-      env: env,
-      passwordProvider: () => getPassword(env),
+    const console = Console();
+    final createAction = CreateAction(
+      env: context.env,
+      password: context.password,
+      console: console,
     );
-    try {
-      await executor.create();
-      infoLn('The "${env.dbName}" database has been successfully created.');
-      return resultOk;
-    } on ConnectionException catch (e) {
-      errorLn('Failed to connect: ${e.message}.');
-      return resultError;
-    } on DatabaseException catch (e) {
-      errorLn('Failed to create the database: ${e.message}.');
-      return resultError;
-    } catch (e) {
-      errorLn('Failed to create the database: $e.');
-      return resultError;
-    }
+    return await createAction.execute();
   }
 }

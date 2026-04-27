@@ -1,56 +1,38 @@
-import 'package:args/command_runner.dart';
+import 'package:meta/meta.dart';
 
 import '../ansi.dart';
-import '../constants.dart';
-import 'config_mixin.dart';
-import 'executors/database.dart';
-import 'stdout_mixin.dart';
+import 'actions/drop_action.dart';
+import 'base_command.dart';
+import 'command_context.dart';
+import 'console.dart';
 
 
-final dropCommand = DropCommand();
-
-
-class DropCommand extends Command<int> with ConfigMixin, StdoutMixin
+final class DropCommand extends BaseCommand
 {
+  @override
+  String get category => 'Database';
+
+  @override
+  String get name => 'drop';
+
   @override
   String get description => 'Drop the database.\n'
     '${dim('Drops the database specified in the selected ${italic('env')} of '
     'the config in the ${bold('dbName')} parameter.')}'
   ;
 
-  @override
-  String get name => 'drop';
+  DropCommand(super.commandContextFactory);
 
   @override
-  String get category => 'Database';
-
-  @override
-  Future<int> run() async
+  @protected
+  Future<int> execute(final CommandContext context) async
   {
-    final env = await loadEnv();
-    if (env == null) {
-      errorLn(
-        'Failed to find the env.\nPlease, specify a valid env in your config.'
-      );
-      return resultError;
-    }
-    final executor = DatabaseExecutor(
-      env: env,
-      passwordProvider: () => getPassword(env),
+    const console = Console();
+    final dropAction = DropAction(
+      env: context.env,
+      password: context.password,
+      console: console,
     );
-    try {
-      await executor.drop();
-      infoLn('The "${env.dbName}" database has been successfully dropped.');
-      return resultOk;
-    } on ConnectionException catch (e) {
-      errorLn('Failed to connect: ${e.message}.');
-      return resultError;
-    } on DatabaseException catch (e) {
-      errorLn('Failed to drop the database: ${e.message}.');
-      return resultError;
-    } catch (e) {
-      errorLn('Failed to drop the database: $e.');
-      return resultError;
-    }
+    return await dropAction.execute();
   }
 }

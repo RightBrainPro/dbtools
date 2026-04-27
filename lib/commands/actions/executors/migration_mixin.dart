@@ -5,7 +5,7 @@ import 'package:convert/convert.dart';
 import 'package:path/path.dart';
 import 'package:pointycastle/digests/md5.dart';
 
-import '../models/migration.dart';
+import '../../models/migration.dart';
 
 
 final rEmptyLine = RegExp(r'^\s*\n', multiLine: true);

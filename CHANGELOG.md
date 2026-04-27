@@ -1,6 +1,7 @@
 ## 1.3.0
 
 - Added support for passing passwords via pipe.
+- Added `recreate` command to reset the database to a fresh state (with optional auto-migration).
 
 ## 1.2.1
 

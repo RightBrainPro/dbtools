@@ -1,25 +1,22 @@
-import 'package:args/command_runner.dart';
+import 'package:meta/meta.dart';
 
 import '../ansi.dart';
-import '../constants.dart';
+import 'actions/fix_action.dart';
 import 'arguments_mixin.dart';
-import 'config_mixin.dart';
-import 'executors/migration.dart';
-import 'stdout_mixin.dart';
+import 'base_command.dart';
+import 'command_context.dart';
+import 'console.dart';
+import 'reporters/fixing_reporter.dart';
 
 
-final fixCommand = FixCommand()
-  ..addArgument('migration identity',
-    help: 'The identity of the migration in the format as you name it in the '
-      'migrations directory.'
-  )
-;
-
-
-class FixCommand extends Command<int>
-  with ConfigMixin, StdoutMixin, ArgumentsMixin
-  implements FixingDelegate
+final class FixCommand extends BaseCommand with ArgumentsMixin
 {
+  @override
+  String get category => 'Migration';
+
+  @override
+  String get name => 'fix';
+
   @override
   String get description => 'Fix the specified migration in the database.\n'
     '${dim('Updates the specified migration in the database with the local '
@@ -30,119 +27,33 @@ class FixCommand extends Command<int>
     'the database.')}'
   ;
 
-  @override
-  String get name => 'fix';
+  static const migrationIdentityArg = 'migration identity';
 
-  @override
-  String get category => 'Migration';
-
-  @override
-  Future<int> run() async
+  FixCommand(super.commandContextFactory)
   {
-    final config = await loadConfig();
-    final env = await loadEnv(config);
-    if (env == null) {
-      usageException(
-        'Failed to find the env.\nPlease, specify a valid env in your config.'
-      );
-    }
-    final migrationIdentity = argument('migration identity');
+    addArgument(migrationIdentityArg,
+      help: 'The identity of the migration in the format as you name it in the '
+        'migrations directory.'
+    );
+  }
+
+  @override
+  @protected
+  Future<int> execute(final CommandContext context) async
+  {
+    const console = Console();
+    final migrationIdentity = argument(migrationIdentityArg);
     if (migrationIdentity == null) {
       usageException('Migration identity is not specified.');
     }
-
-    final executor = MigrationExecutor(
-      config: config,
-      env: env,
-      passwordProvider: () => getPassword(env),
+    final fixAction = FixAction(
+      env: context.env,
+      password: context.password,
+      migrationsPath: context.config.migrationsPath,
+      migrationIdentity: migrationIdentity,
+      handler: const FixingReporter(console),
+      console: console,
     );
-    try {
-      await executor.fixMigration(migrationIdentity, delegate: this);
-      return resultOk;
-    } on AbortedException {
-      return resultError;
-    } on ConnectionException catch (e) {
-      errorLn('Failed to connect: ${e.message}.');
-      return resultError;
-    } on MigrationException catch (e) {
-      errorCLn('Failed to update migration: ${e.message}.');
-      return resultError;
-    } catch (e) {
-      errorCLn('Failed to update migration: $e.');
-      return resultError;
-    }
-  }
-
-  @override
-  void onBadIdentity(final String identity)
-  {
-    errorCLn('Invalid identity format: $identity.');
-    infoLn('Updating migration ✖');
-  }
-
-  @override
-  void onPreparingStarted()
-  {
-    info('Preparing the database...');
-  }
-
-  @override
-  void onBeforePreparingError(final String reason)
-  {
-    errorCLn('Error before preparing: $reason');
-    infoLn('Preparing the database ✖');
-  }
-
-  @override
-  void onMigrationsTableError(final String tableName, final String reason)
-  {
-    errorCLn('Failed to create the migrations table "$tableName": $reason');
-    infoLn('Preparing the database ✖');
-  }
-
-  @override
-  void onAfterPreparingError(final String reason)
-  {
-    errorCLn('Error after preparing: $reason');
-    infoLn('Preparing the database ✖');
-  }
-
-  @override
-  void onPreparingSucceeded()
-  {
-    infoCLn('Preparing the database ✔');
-  }
-
-  @override
-  void onUpdatingStarted(final int id)
-  {
-    info('Updating migration #$id...');
-  }
-
-  @override
-  void onLocalMigrationNotFound(final int id)
-  {
-    errorCLn('The migration #$id is not found in the local storage.');
-    infoLn('Updating migration ✖');
-  }
-
-  @override
-  void onDbMigrationNotFound(final int id)
-  {
-    errorCLn('The migration #$id is not found in the database.');
-    infoLn('Updating migration ✖');
-  }
-
-  @override
-  void onUpdatingFailed(final int id, final String reason)
-  {
-    errorCLn('Failed to update the migration #$id: $reason.');
-    infoLn('Updating migration ✖');
-  }
-
-  @override
-  void onUpdatingSucceeded(final int id)
-  {
-    infoCLn('Updating migration #$id ✔');
+    return await fixAction.execute();
   }
 }

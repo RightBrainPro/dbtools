@@ -7,6 +7,7 @@ import 'package:dbtools/runner.dart';
 
 Future<void> main(List<String> args) async
 {
+  final mainRunner = MainCommandRunner();
   try {
     final result = await mainRunner.run(args);
     exit(result ?? resultOk);

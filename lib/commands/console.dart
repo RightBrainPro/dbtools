@@ -1,8 +1,10 @@
 import 'dart:io';
 
 
-mixin StdoutMixin
+mixin class Console
 {
+  const Console();
+
   /// Append the current info line with [message].
   void info(final String message)
   {

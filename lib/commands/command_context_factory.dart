@@ -1,17 +1,62 @@
 import 'dart:io';
 
-import 'package:args/command_runner.dart';
+import 'package:args/args.dart';
 import 'package:yaml/yaml.dart';
 
+import 'command_context.dart';
 import 'models/config.dart';
 
 
-mixin ConfigMixin<T> on Command<T>
+abstract interface class CommandContextFactory
 {
-  Future<Config> loadConfig() async
+  Future<CommandContext> create(ArgResults? args);
+}
+
+
+base class CommandContextException implements Exception
+{
+  final String message;
+
+  const CommandContextException(this.message);
+
+  @override
+  String toString()
+  {
+    final buffer = StringBuffer('CommandContextException');
+    if (message.isNotEmpty) buffer.write(': $message');
+    return buffer.toString();
+  }
+}
+
+
+final class DefaultCommandContextFactory implements CommandContextFactory
+{
+  const DefaultCommandContextFactory();
+
+  @override
+  Future<CommandContext> create(final ArgResults? args) async
+  {
+    final configName = args?.option('config');
+    final envName = args?.option('env');
+    final askPassword = args?.flag('password') ?? false;
+
+    final config = await _getConfig(configName);
+    final env = config.envs[envName]
+      ?? config.envs['dev']
+      ?? config.envs.values.firstOrNull
+    ;
+    if (env == null) {
+      throw const CommandContextException(
+        'Failed to find the env.\nPlease, specify a valid env in your config.'
+      );
+    }
+    final password = _getPassword(env, askPassword);
+    return CommandContext(config: config, env: env, password: password);
+  }
+
+  Future<Config> _getConfig(final String? configName) async
   {
     Config? config;
-    final configName = globalResults?.option('config');
     if (configName != null) {
       config = await _loadConfig(fileName: configName);
     }
@@ -20,19 +65,8 @@ mixin ConfigMixin<T> on Command<T>
     return config ?? const Config();
   }
 
-  Future<EnvConfig?> loadEnv([ Config? config ]) async
+  String _getPassword(final EnvConfig env, final bool askPassword)
   {
-    config ??= await loadConfig();
-    final envName = globalResults?.option('env');
-    final env = config.envs[envName]
-      ?? config.envs['dev']
-      ?? config.envs.values.firstOrNull;
-    return env;
-  }
-
-  String getPassword(final EnvConfig env)
-  {
-    final askPassword = globalResults?.flag('password') ?? false;
     if (askPassword) {
       if (stdin.hasTerminal) {
         stdout.write('Password for the user ${env.user}: ');
@@ -45,20 +79,6 @@ mixin ConfigMixin<T> on Command<T>
       return stdin.readLineSync() ?? '';
     }
     return env.password ?? '';
-  }
-
-  String getPostgresUrl(final EnvConfig env)
-  {
-    final password = getPassword(env);
-    return 'postgres://${env.user}:$password@${env.host}:${env.port}/'
-      '${env.dbName}';
-  }
-
-  String getPostgresHomeUrl(final EnvConfig env)
-  {
-    final password = getPassword(env);
-    return 'postgres://${env.user}:$password@${env.host}:${env.port}/'
-      '${env.homeDbName}';
   }
 
   Future<Config?> _loadConfig({

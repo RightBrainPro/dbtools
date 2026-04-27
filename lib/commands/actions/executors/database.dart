@@ -2,20 +2,20 @@ import 'dart:async';
 
 import 'package:postgresql2/postgresql.dart';
 
-import '../models/config.dart';
+import '../../models/config.dart';
 import 'exceptions.dart';
-import 'types.dart';
 
 export 'exceptions.dart' show ConnectionException, DatabaseException;
+
 
 class DatabaseExecutor
 {
   final EnvConfig env;
-  final PasswordProvider passwordProvider;
+  final String password;
 
   const DatabaseExecutor({
     required this.env,
-    required this.passwordProvider,
+    required this.password,
   });
 
   Future<void> create() async
@@ -33,7 +33,6 @@ class DatabaseExecutor
 
   Future<String> getPostgresHomeUrl() async
   {
-    final password = await passwordProvider();
     return 'postgres://${env.user}:$password@${env.host}:${env.port}/'
       '${env.homeDbName}';
   }

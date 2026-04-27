@@ -4,10 +4,10 @@ import 'dart:math';
 
 import 'package:postgresql2/postgresql.dart';
 
-import '../models/config.dart';
-import '../models/migration.dart';
+import '../../models/config.dart';
+import '../../models/migration.dart';
+import '../../extensions.dart';
 import 'exceptions.dart';
-import '../extensions.dart';
 import 'migration_mixin.dart';
 import 'types.dart';
 
@@ -17,42 +17,41 @@ export 'exceptions.dart'
 
 class MigrationExecutor with MigrationMixin
 {
-  final Config config;
   final EnvConfig env;
-  final PasswordProvider passwordProvider;
+  final String password;
+  final String migrationsPath;
   final bool allowRollback;
 
   const MigrationExecutor({
-    required this.config,
     required this.env,
-    required this.passwordProvider,
+    required this.password,
+    required this.migrationsPath,
     this.allowRollback = true,
   });
 
   Future<void> migrate({
     final String? targetIdentity,
-    final MigrationDelegate? delegate,
+    final MigrationHandler? handler,
   }) => _execute((connection) => _migrate(connection,
     targetIdentity: targetIdentity,
-    delegate: delegate,
+    handler: handler,
   ));
 
   Future<void> clean({
-    final CleaningDelegate? delegate,
+    final CleaningHandler? handler,
   }) => _execute((connection) => _clean(connection,
-    delegate: delegate,
+    handler: handler,
   ));
 
   Future<void> fixMigration(final String identity, {
-    final FixingDelegate? delegate,
+    final FixingHandler? handler,
   }) => _execute((connection) => _fixMigration(connection,
     identity: identity,
-    delegate: delegate,
+    handler: handler,
   ));
 
   Future<String> getPostgresUrl() async
   {
-    final password = await passwordProvider();
     return 'postgres://${env.user}:$password@${env.host}:${env.port}/'
       '${env.dbName}';
   }
@@ -81,22 +80,22 @@ class MigrationExecutor with MigrationMixin
   }
 
   Future<void> _prepare(final Connection connection, {
-    final PreparingDelegate? delegate,
+    final PreparingHandler? handler,
   }) async
   {
-    delegate?.onPreparingStarted();
+    handler?.onPreparingStarted();
     try {
       final script = await getScript(
-        config.migrationsPath, 'before_prepare.sql'
+        migrationsPath, 'before_prepare.sql'
       );
       if (script.isNotEmpty) {
         await connection.execute(script);
       }
     } on PostgresqlException catch (e) {
-      delegate?.onBeforePreparingError(e.info);
+      handler?.onBeforePreparingError(e.info);
       throw AbortedException(e.info);
     } catch (e) {
-      delegate?.onBeforePreparingError('$e');
+      handler?.onBeforePreparingError('$e');
       throw AbortedException('$e');
     }
     try {
@@ -109,43 +108,43 @@ class MigrationExecutor with MigrationMixin
       ');';
       await connection.execute(sql);
     } on PostgresqlException catch (e) {
-      delegate?.onMigrationsTableError(env.tableName, e.info);
+      handler?.onMigrationsTableError(env.tableName, e.info);
       throw AbortedException(e.info);
     } catch (e) {
-      delegate?.onMigrationsTableError(env.tableName, '$e');
+      handler?.onMigrationsTableError(env.tableName, '$e');
       throw AbortedException('$e');
     }
     try {
       final script = await getScript(
-        config.migrationsPath, 'after_prepare.sql'
+        migrationsPath, 'after_prepare.sql'
       );
       if (script.isNotEmpty) {
         await connection.execute(script);
       }
     } on PostgresqlException catch (e) {
-      delegate?.onAfterPreparingError(e.info);
+      handler?.onAfterPreparingError(e.info);
       throw AbortedException(e.info);
     } catch (e) {
-      delegate?.onAfterPreparingError('$e');
+      handler?.onAfterPreparingError('$e');
       throw AbortedException('$e');
     }
-    delegate?.onPreparingSucceeded();
+    handler?.onPreparingSucceeded();
   }
 
   Future<void> _migrate(final Connection connection, {
-    final MigrationDelegate? delegate,
+    final MigrationHandler? handler,
     final String? targetIdentity,
   }) async
   {
-    await _prepare(connection, delegate: delegate);
+    await _prepare(connection, handler: handler);
 
-    delegate?.onScanningStarted();
+    handler?.onScanningStarted();
     final List<BriefMigration> localMigrations;
     final List<BriefMigration> dbMigrations;
     try {
       // Collect all local migrations, sorted by id.
       final orderedMigrations = SplayTreeMap<int /* id */, BriefMigration>();
-      final dir = Directory(config.migrationsPath);
+      final dir = Directory(migrationsPath);
       await for (var entity in dir.list()) {
         if (entity is! Directory) continue;
         final brief = await getBriefMigration(entity.path);
@@ -166,16 +165,16 @@ class MigrationExecutor with MigrationMixin
         ));
       }
     } on FormatException catch (e) {
-      delegate?.onScanningError(e.message);
+      handler?.onScanningError(e.message);
       throw AbortedException(e.message);
     } on FileSystemException catch (e) {
-      delegate?.onScanningError('${e.message}, path ${e.path}');
+      handler?.onScanningError('${e.message}, path ${e.path}');
       throw AbortedException('${e.message}, path ${e.path}');
     } catch (e) {
-      delegate?.onScanningError('$e');
+      handler?.onScanningError('$e');
       throw AbortedException('$e');
     }
-    delegate?.onScanningSucceeded();
+    handler?.onScanningSucceeded();
 
     int? targetMigrationId;
     if (targetIdentity != null) {
@@ -183,19 +182,19 @@ class MigrationExecutor with MigrationMixin
         final identity = getMigrationIdentity(targetIdentity);
         targetMigrationId = identity.id;
       } on FormatException {
-        delegate?.onBadIdentity(targetIdentity);
+        handler?.onBadIdentity(targetIdentity);
         throw AbortedException('Invalid identity format: $targetIdentity');
       } catch (e) {
-        delegate?.onBadIdentity(targetIdentity);
+        handler?.onBadIdentity(targetIdentity);
         throw AbortedException('$e');
       }
       if (localMigrations.every((e) => e.id != targetMigrationId)) {
-        delegate?.onIdentityNotFound(targetMigrationId);
+        handler?.onIdentityNotFound(targetMigrationId);
         throw AbortedException('Migration #$targetMigrationId is not found.');
       }
     }
 
-    delegate?.onComparingStarted();
+    handler?.onComparingStarted();
     var actualMigrations = 0;
     var migrationsToRollback = 0;
     var targetMigrationFound = false;
@@ -214,12 +213,12 @@ class MigrationExecutor with MigrationMixin
       }
       migrationsToRollback = dbMigrations.length - actualMigrations;
     }
-    delegate?.onComparingSucceeded();
+    handler?.onComparingSucceeded();
 
-    delegate?.onRollbackStarted(migrationsToRollback);
+    handler?.onRollbackStarted(migrationsToRollback);
     if (migrationsToRollback > 0) {
       if (!allowRollback) {
-        delegate?.onRollbackForbidden(migrationsToRollback);
+        handler?.onRollbackForbidden(migrationsToRollback);
         throw Exception('Aborted');
       }
       final List<RollbackMigration> rollbacks;
@@ -236,10 +235,10 @@ class MigrationExecutor with MigrationMixin
           .map((row) => RollbackMigration(id: row[0], rollback: row[1]))
           .toList();
       } on PostgresqlException catch (e) {
-        delegate?.onRollbackFailed(e.info);
+        handler?.onRollbackFailed(e.info);
         throw AbortedException(e.info);
       } catch (e) {
-        delegate?.onRollbackFailed('$e');
+        handler?.onRollbackFailed('$e');
         throw AbortedException('$e');
       }
       for (final migration in rollbacks) {
@@ -250,15 +249,15 @@ class MigrationExecutor with MigrationMixin
             await connection.execute(sql, { 'id': migration.id });
           });
         } on PostgresqlException catch (e) {
-          delegate?.onMigrationRollbackFailed(migration.id, e.info);
+          handler?.onMigrationRollbackFailed(migration.id, e.info);
           throw AbortedException(e.info);
         } catch (e) {
-          delegate?.onMigrationRollbackFailed(migration.id, '$e');
+          handler?.onMigrationRollbackFailed(migration.id, '$e');
           throw AbortedException('$e');
         }
       }
     }
-    delegate?.onRollbackSucceeded(migrationsToRollback);
+    handler?.onRollbackSucceeded(migrationsToRollback);
 
     Object? error;
 
@@ -278,23 +277,23 @@ class MigrationExecutor with MigrationMixin
     } else {
       migrationsToApply = localMigrations.skip(actualMigrations).toList();
     }
-    delegate?.onCommittingStarted(migrationsToApply.length);
+    handler?.onCommittingStarted(migrationsToApply.length);
     if (migrationsToApply.isEmpty) {
-      delegate?.onCommittingFinished(0, 0);
+      handler?.onCommittingFinished(0, 0);
       if (migrationsToRollback == dbMigrations.length) {
         final script = await getScript(
-          config.migrationsPath, 'cleanup.sql'
+          migrationsPath, 'cleanup.sql'
         );
         if (script.isNotEmpty) {
-          delegate?.onCleanupStarted();
+          handler?.onCleanupStarted();
           try {
             await connection.execute(script);
-            delegate?.onCleanupSucceeded();
+            handler?.onCleanupSucceeded();
           } on PostgresqlException catch (e) {
-            delegate?.onCleanupFailed(e.info);
+            handler?.onCleanupFailed(e.info);
             error = e;
           } catch (e) {
-            delegate?.onCleanupFailed('$e');
+            handler?.onCleanupFailed('$e');
             error = e;
           }
         }
@@ -313,29 +312,29 @@ class MigrationExecutor with MigrationMixin
           });
           ++migrationsApplied;
         } on PostgresqlException catch (e) {
-          delegate?.onMigrationCommitFailed(localMigration.id, e.info);
+          handler?.onMigrationCommitFailed(localMigration.id, e.info);
           error = e;
           break;
         } catch (e) {
-          delegate?.onMigrationCommitFailed(localMigration.id, '$e');
+          handler?.onMigrationCommitFailed(localMigration.id, '$e');
           error = e;
           break;
         }
       }
-      delegate?.onCommittingFinished(migrationsApplied, migrationsToApply.length);
+      handler?.onCommittingFinished(migrationsApplied, migrationsToApply.length);
       if (migrationsApplied > 0) {
         try {
           final script = await getScript(
-            config.migrationsPath, 'after_commits.sql'
+            migrationsPath, 'after_commits.sql'
           );
           if (script.isNotEmpty) {
             await connection.execute(script);
           }
         } on PostgresqlException catch (e) {
-          delegate?.onAfterCommittingFailed(e.info);
+          handler?.onAfterCommittingFailed(e.info);
           error = e;
         } catch (e) {
-          delegate?.onAfterCommittingFailed('$e');
+          handler?.onAfterCommittingFailed('$e');
           error = e;
         }
       }
@@ -345,12 +344,12 @@ class MigrationExecutor with MigrationMixin
   }
 
   Future<void> _clean(final Connection connection, {
-    final CleaningDelegate? delegate,
+    final CleaningHandler? handler,
   }) async
   {
-    await _prepare(connection, delegate: delegate);
+    await _prepare(connection, handler: handler);
 
-    delegate?.onScanningStarted();
+    handler?.onScanningStarted();
     final List<BriefMigration> dbMigrations;
     try {
       // Query all db migrations, sorted by id.
@@ -367,23 +366,23 @@ class MigrationExecutor with MigrationMixin
         ));
       }
     } on FormatException catch (e) {
-      delegate?.onScanningError(e.message);
+      handler?.onScanningError(e.message);
       throw AbortedException(e.message);
     } on FileSystemException catch (e) {
-      delegate?.onScanningError('${e.message}, path ${e.path}');
+      handler?.onScanningError('${e.message}, path ${e.path}');
       throw AbortedException('${e.message}, path ${e.path}');
     } catch (e) {
-      delegate?.onScanningError('$e');
+      handler?.onScanningError('$e');
       throw AbortedException('$e');
     }
-    delegate?.onScanningSucceeded();
+    handler?.onScanningSucceeded();
 
     final migrationsToRollback = dbMigrations.length;
 
-    delegate?.onRollbackStarted(migrationsToRollback);
+    handler?.onRollbackStarted(migrationsToRollback);
     if (migrationsToRollback > 0) {
       if (!allowRollback) {
-        delegate?.onRollbackForbidden(migrationsToRollback);
+        handler?.onRollbackForbidden(migrationsToRollback);
         throw Exception('Aborted');
       }
       final List<RollbackMigration> rollbacks;
@@ -395,10 +394,10 @@ class MigrationExecutor with MigrationMixin
           .map((row) => RollbackMigration(id: row[0], rollback: row[1]))
           .toList();
       } on PostgresqlException catch (e) {
-        delegate?.onRollbackFailed(e.info);
+        handler?.onRollbackFailed(e.info);
         throw AbortedException(e.info);
       } catch (e) {
-        delegate?.onRollbackFailed('$e');
+        handler?.onRollbackFailed('$e');
         throw AbortedException('$e');
       }
       for (final migration in rollbacks) {
@@ -409,29 +408,27 @@ class MigrationExecutor with MigrationMixin
             await connection.execute(sql, { 'id': migration.id });
           });
         } on PostgresqlException catch (e) {
-          delegate?.onMigrationRollbackFailed(migration.id, e.info);
+          handler?.onMigrationRollbackFailed(migration.id, e.info);
           throw AbortedException(e.info);
         } catch (e) {
-          delegate?.onMigrationRollbackFailed(migration.id, '$e');
+          handler?.onMigrationRollbackFailed(migration.id, '$e');
           throw AbortedException('$e');
         }
       }
     }
-    delegate?.onRollbackSucceeded(migrationsToRollback);
+    handler?.onRollbackSucceeded(migrationsToRollback);
 
-    final script = await getScript(
-      config.migrationsPath, 'cleanup.sql'
-    );
+    final script = await getScript(migrationsPath, 'cleanup.sql');
     if (script.isNotEmpty) {
-      delegate?.onCleanupStarted();
+      handler?.onCleanupStarted();
       try {
         await connection.execute(script);
-        delegate?.onCleanupSucceeded();
+        handler?.onCleanupSucceeded();
       } on PostgresqlException catch (e) {
-        delegate?.onCleanupFailed(e.info);
+        handler?.onCleanupFailed(e.info);
         throw AbortedException('$e');
       } catch (e) {
-        delegate?.onCleanupFailed('$e');
+        handler?.onCleanupFailed('$e');
         throw AbortedException('$e');
       }
     }
@@ -439,25 +436,25 @@ class MigrationExecutor with MigrationMixin
 
   Future<void> _fixMigration(final Connection connection, {
     required final String identity,
-    final FixingDelegate? delegate,
+    final FixingHandler? handler,
   }) async
   {
     final MigrationIdentity migrationIdentity;
     try {
       migrationIdentity = getMigrationIdentity(identity);
     } on FormatException {
-      delegate?.onBadIdentity(identity);
+      handler?.onBadIdentity(identity);
       throw AbortedException('Invalid identity format: $identity');
     } catch (e) {
-      delegate?.onBadIdentity(identity);
+      handler?.onBadIdentity(identity);
       throw AbortedException('$e');
     }
 
-    await _prepare(connection, delegate: delegate);
+    await _prepare(connection, handler: handler);
 
-    delegate?.onUpdatingStarted(migrationIdentity.id);
+    handler?.onUpdatingStarted(migrationIdentity.id);
     Migration? migration;
-    final dir = Directory(config.migrationsPath);
+    final dir = Directory(migrationsPath);
     await for (var entity in dir.list()) {
       if (entity is! Directory) continue;
       final brief = await getBriefMigration(entity.path);
@@ -467,7 +464,7 @@ class MigrationExecutor with MigrationMixin
       }
     }
     if (migration == null) {
-      delegate?.onLocalMigrationNotFound(migrationIdentity.id);
+      handler?.onLocalMigrationNotFound(migrationIdentity.id);
       throw const AbortedException('The local migration is not found.');
     }
     try {
@@ -477,25 +474,25 @@ class MigrationExecutor with MigrationMixin
         'where id = @id';
       final updated = await connection.execute(sql, migration.toJson());
       if (updated < 1) {
-        delegate?.onDbMigrationNotFound(migrationIdentity.id);
+        handler?.onDbMigrationNotFound(migrationIdentity.id);
         throw const AbortedException('Migration is not found in the database');
       } else if (updated > 1) {
         throw const MigrationException('More than one migration were updated');
       } else {
-        delegate?.onUpdatingSucceeded(migrationIdentity.id);
+        handler?.onUpdatingSucceeded(migrationIdentity.id);
       }
     } on PostgresqlException catch (e) {
-      delegate?.onUpdatingFailed(migrationIdentity.id, e.info);
+      handler?.onUpdatingFailed(migrationIdentity.id, e.info);
       throw AbortedException(e.info);
     } catch (e) {
-      delegate?.onUpdatingFailed(migrationIdentity.id, '$e');
+      handler?.onUpdatingFailed(migrationIdentity.id, '$e');
       throw AbortedException('$e');
     }
   }
 }
 
 
-abstract interface class PreparingDelegate
+abstract interface class PreparingHandler
 {
   /// Occurs when the preparing process starts.
   void onPreparingStarted();
@@ -514,7 +511,7 @@ abstract interface class PreparingDelegate
 }
 
 
-abstract interface class ScanningDelegate
+abstract interface class ScanningHandler
 {
   /// Occurs when the migration scanning process starts.
   void onScanningStarted();
@@ -527,7 +524,7 @@ abstract interface class ScanningDelegate
 }
 
 
-abstract interface class RollbackDelegate
+abstract interface class RollbackHandler
 {
   /// Occurs when the rollback process starts with the specified [number] of
   /// migrations to be rolled back.
@@ -550,7 +547,7 @@ abstract interface class RollbackDelegate
 }
 
 
-abstract interface class CleaningUpDelegate
+abstract interface class CleaningUpHandler
 {
   /// Occurs when all migrations are rolled back in the database and there is no
   /// any migration to be committed.
@@ -564,9 +561,9 @@ abstract interface class CleaningUpDelegate
 }
 
 
-abstract interface class MigrationDelegate
-  implements PreparingDelegate, ScanningDelegate, RollbackDelegate,
-    CleaningUpDelegate
+abstract interface class MigrationHandler
+  implements PreparingHandler, ScanningHandler, RollbackHandler,
+    CleaningUpHandler
 {
   /// Occurs when the target migration [identity] has bad format.
   void onBadIdentity(final String identity);
@@ -600,14 +597,14 @@ abstract interface class MigrationDelegate
 }
 
 
-abstract interface class CleaningDelegate
-  implements PreparingDelegate, ScanningDelegate, RollbackDelegate,
-    CleaningUpDelegate
+abstract interface class CleaningHandler
+  implements PreparingHandler, ScanningHandler, RollbackHandler,
+    CleaningUpHandler
 {
 }
 
 
-abstract interface class FixingDelegate implements PreparingDelegate
+abstract interface class FixingHandler implements PreparingHandler
 {
   /// Occurs when the migration [identity] has bad format.
   void onBadIdentity(final String identity);
